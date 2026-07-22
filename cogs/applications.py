@@ -188,8 +188,15 @@ class DirectionSelectView(discord.ui.View):
         self.applicant_id = applicant_id
         self.app_data = app_data
         self.original_message = original_message
+        self.resolved = False
 
     async def _create_thread(self, interaction: discord.Interaction, direction: str, instructions: str):
+        if self.resolved:
+            return await interaction.response.send_message(
+                "Направление уже выбрано, ветка создана ранее — не флуди 🙂", ephemeral=True
+            )
+        self.resolved = True
+
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         member = guild.get_member(self.applicant_id)
@@ -205,19 +212,10 @@ class DirectionSelectView(discord.ui.View):
         if member:
             await thread.add_user(member)
         await thread.add_user(interaction.user)
-
-        # Добавляем всех рекрутов и хай-ранг — доступ к ветке только у них
-        added = {interaction.user.id, self.applicant_id}
-        for key in ("RECRUITER", "HIGH"):
-            role = guild.get_role(config.ROLE_IDS.get(key))
-            if role:
-                for m in role.members:
-                    if m.id not in added:
-                        try:
-                            await thread.add_user(m)
-                            added.add(m.id)
-                        except Exception:
-                            pass
+        # Больше НЕ добавляем сюда всех рекрутов/хай-ранг автоматически.
+        # Чтобы хай-ранги видели все приватные ветки в APP_LOG без добавления в каждую,
+        # выдай их роли право "Manage Threads" (Управление ветками) на этом канале в настройках сервера —
+        # тогда они увидят ветку сами, а список участников останется только кандидат + рекрутер.
 
         self.app_data["claimed_by"] = interaction.user.id
         self.app_data["direction"] = direction
@@ -256,7 +254,12 @@ class DirectionSelectView(discord.ui.View):
                 discord.Color.gold()
             )
 
-        await interaction.followup.send(f"Ветка {thread.mention} создана!", ephemeral=True)
+        # Убираем кнопки выбора направления, чтобы рекрутер не мог нажать ещё раз
+        self.stop()
+        try:
+            await interaction.edit_original_response(content=f"Ветка {thread.mention} создана!", view=None)
+        except Exception:
+            await interaction.followup.send(f"Ветка {thread.mention} создана!", ephemeral=True)
 
     @discord.ui.button(label="РП СТАК", style=discord.ButtonStyle.primary)
     async def rp_stack(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -273,6 +276,7 @@ class DirectionSelectView(discord.ui.View):
             "2️⃣ Загрузи видео на **RuTube** или **YouTube** и пришли ссылку прямо сюда."
         )
         await self._create_thread(interaction, "КРАЙМ", instructions)
+
 
 
 class NewApplicationView(discord.ui.View):
@@ -356,9 +360,11 @@ class NewApplicationView(discord.ui.View):
         sent = False
         if member:
             try:
+                voice_channel_id = config.CHANNEL_IDS.get("RECRUIT_CALL")
+                voice_line = f"\n\n🔊 Заходи сюда: <#{voice_channel_id}>" if voice_channel_id else ""
                 await member.send(
                     f"📞 Рекрутер **{interaction.user.display_name}** просит вас зайти в голосовой канал "
-                    f"для короткого собеседования по вашей заявке в **APATIA**."
+                    f"для короткого собеседования по вашей заявке в **APATIA**.{voice_line}"
                 )
                 sent = True
             except Exception:
