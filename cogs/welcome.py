@@ -1,10 +1,44 @@
 # cogs/welcome.py
+import os
 import discord
 from discord.ext import commands
 import config
 
-# Ссылка на баннер семьи (можешь заменить на свою прямую ссылку)
-FAMILY_BANNER_URL = "https://i.imgur.com/2XyZ8xQ.png" 
+
+def build_welcome_files(member: discord.Member):
+    """
+    Возвращает (embed, files) для карточки приветствия.
+    Картинка баннера берётся ЛОКАЛЬНО из config.WELCOME_BANNER_FILE,
+    поэтому больше не будет битой ссылки imgur.
+    """
+    embed = discord.Embed(
+        title="🥀 WELCOME TO APATIA FAMILY",
+        description=(
+            f"Приветствуем тебя на сервере, {member.mention}!\n\n"
+            f"📌 **С чего начать?**\n"
+            f"• Ознакомься с правилами нашего сервера.\n"
+            f"• Заполни анкету в канале заявок, чтобы попасть в состав.\n"
+            f"• Присоединяйся к общению в общем чате!\n"
+        ),
+        color=discord.Color.from_rgb(139, 0, 0)
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text="APATIA FAMILY • All rights reserved")
+
+    files = []
+    banner_path = config.WELCOME_BANNER_FILE
+    if os.path.isfile(banner_path):
+        filename = os.path.basename(banner_path)
+        file = discord.File(banner_path, filename=filename)
+        embed.set_image(url=f"attachment://{filename}")
+        files.append(file)
+    else:
+        # Файла нет — просто не показываем картинку, но бот не падает
+        print(f"⚠️ Баннер приветствия не найден: {banner_path}. "
+              f"Положи картинку по этому пути, чтобы она отображалась.")
+
+    return embed, files
+
 
 class WelcomeCog(commands.Cog):
     def __init__(self, bot):
@@ -27,23 +61,9 @@ class WelcomeCog(commands.Cog):
         if channel_id:
             channel = member.guild.get_channel(channel_id)
             if channel:
-                embed = discord.Embed(
-                    title="🥀 WELCOME TO APATIA FAMILY",
-                    description=(
-                        f"Приветствуем тебя на сервере, {member.mention}!\n\n"
-                        f"📌 **С чего начать?**\n"
-                        f"• Ознакомься с правилами нашего сервера.\n"
-                        f"• Заполни анкету в канале заявок, чтобы попасть в состав.\n"
-                        f"• Присоединяйся к общению в общем чате!\n"
-                    ),
-                    color=discord.Color.from_rgb(139, 0, 0)
-                )
-                
-                embed.set_thumbnail(url=member.display_avatar.url)
-                embed.set_image(url=FAMILY_BANNER_URL)
-                embed.set_footer(text="APATIA FAMILY • All rights reserved")
+                embed, files = build_welcome_files(member)
+                await channel.send(content=f"Добро пожаловать, {member.mention}!", embed=embed, files=files)
 
-                await channel.send(content=f"Добро пожаловать, {member.mention}!", embed=embed)
 
 async def setup(bot):
     await bot.add_cog(WelcomeCog(bot))
