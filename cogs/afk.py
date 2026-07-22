@@ -54,6 +54,13 @@ class AfkControlView(discord.ui.View):
 
     @discord.ui.button(label="🚨 ВЫЗВАТЬ ВСЕХ В ИГРУ (High)", style=discord.ButtonStyle.danger, custom_id="btn_ping_afk")
     async def ping_all_afk(self, interaction: discord.Interaction, button: discord.ui.Button):
+        high_role = interaction.guild.get_role(config.ROLE_IDS.get("HIGH"))
+        is_high_or_above = high_role and interaction.user.top_role.position >= high_role.position
+        if not (is_high_or_above or interaction.user.guild_permissions.administrator):
+            return await interaction.response.send_message(
+                "Эта кнопка доступна только от роли **High** и выше!", ephemeral=True
+            )
+
         await interaction.response.defer(ephemeral=True)
 
         if not afk_database:
