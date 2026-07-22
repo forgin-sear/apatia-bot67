@@ -2,6 +2,7 @@
 import discord
 from discord.ext import commands
 import config
+from .utils import temp_reply, temp_edit
 
 
 def get_cog(interaction: discord.Interaction) -> "PrivateVoiceCog":
@@ -50,7 +51,7 @@ class RenameModal(discord.ui.Modal, title="Переименовать комна
     async def on_submit(self, interaction: discord.Interaction):
         try:
             await self.channel.edit(name=str(self.new_name.value))
-            await interaction.response.send_message(f"✅ Комната переименована в **{self.new_name.value}**!", ephemeral=True)
+            await temp_reply(interaction, f"✅ Комната переименована в **{self.new_name.value}**!")
         except Exception as e:
             await interaction.response.send_message(f"❌ Не удалось переименовать: {e}", ephemeral=True)
 
@@ -72,7 +73,7 @@ class LimitModal(discord.ui.Modal, title="Лимит участников"):
 
         await self.channel.edit(user_limit=value)
         text = "без лимита" if value == 0 else f"**{value}** участников"
-        await interaction.response.send_message(f"✅ Лимит комнаты: {text}.", ephemeral=True)
+        await temp_reply(interaction, f"✅ Лимит комнаты: {text}.")
 
 
 class KickSelectView(discord.ui.View):
@@ -96,9 +97,9 @@ class KickSelectView(discord.ui.View):
         member = interaction.guild.get_member(member_id)
         if member and member.voice and member.voice.channel and member.voice.channel.id == self.channel.id:
             await member.move_to(None)
-            await interaction.response.edit_message(content=f"👢 {member.mention} выгнан из комнаты!", view=None)
+            await temp_edit(interaction, content=f"👢 {member.mention} выгнан из комнаты!", view=None)
         else:
-            await interaction.response.edit_message(content="Этого участника уже нет в комнате.", view=None)
+            await temp_edit(interaction, content="Этого участника уже нет в комнате.", view=None)
 
 
 class TransferSelectView(discord.ui.View):
@@ -122,7 +123,8 @@ class TransferSelectView(discord.ui.View):
         new_owner_id = int(select.values[0])
         new_owner = interaction.guild.get_member(new_owner_id)
         self.cog.active_voices[self.channel.id] = new_owner_id
-        await interaction.response.edit_message(
+        await temp_edit(
+            interaction,
             content=f"👑 Права на комнату переданы: {new_owner.mention if new_owner else new_owner_id}!",
             view=None
         )
@@ -142,11 +144,11 @@ class VoiceControlView(discord.ui.View):
         if overwrite.connect is False:
             overwrite.connect = None
             await channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)
-            await interaction.response.send_message("🔓 Комната открыта для всех!", ephemeral=True)
+            await temp_reply(interaction, "🔓 Комната открыта для всех!")
         else:
             overwrite.connect = False
             await channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)
-            await interaction.response.send_message("🔒 Комната закрыта от посторонних!", ephemeral=True)
+            await temp_reply(interaction, "🔒 Комната закрыта от посторонних!")
 
     @discord.ui.button(label="✏️ Название", style=discord.ButtonStyle.secondary, custom_id="v_rename")
     async def rename_voice(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -222,7 +224,7 @@ class PrivateVoiceCog(commands.Cog):
             color=discord.Color.purple()
         )
         await interaction.channel.send(embed=embed, view=VoiceControlView())
-        await interaction.response.send_message("Панель настроек войса установлена!", ephemeral=True)
+        await temp_reply(interaction, "Панель настроек войса установлена!")
 
 
 async def setup(bot):

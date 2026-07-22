@@ -2,6 +2,7 @@
 import discord
 from discord.ext import commands
 import config
+from .utils import temp_reply
 
 # Локальная база данных АФК: {user_id: {"time": "...", "reason": "..."}}
 afk_database = {}
@@ -30,7 +31,7 @@ class AfkModal(discord.ui.Modal, title="Форма ухода в АФК"):
         if cog:
             await cog.update_afk_board(interaction.guild)
 
-        await interaction.followup.send("Вы успешно занесены в список АФК!", ephemeral=True)
+        await temp_reply(interaction, "Вы успешно занесены в список АФК!")
 
 
 class AfkControlView(discord.ui.View):
@@ -45,7 +46,7 @@ class AfkControlView(discord.ui.View):
     async def back_afk(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id in afk_database:
             del afk_database[interaction.user.id]
-            await interaction.response.send_message("Вы успешно убраны из списка АФК!", ephemeral=True)
+            await temp_reply(interaction, "Вы успешно убраны из списка АФК!")
             cog = interaction.client.get_cog("AfkCog")
             if cog:
                 await cog.update_afk_board(interaction.guild)
@@ -76,7 +77,7 @@ class AfkControlView(discord.ui.View):
                 except Exception:
                     pass
 
-        await interaction.followup.send(f"🔔 Сообщение с вызовом в игру отправлено **{count}** участникам из АФК!", ephemeral=True)
+        await temp_reply(interaction, f"🔔 Сообщение с вызовом в игру отправлено **{count}** участникам из АФК!")
 
 
 class AfkCog(commands.Cog):
@@ -122,7 +123,7 @@ class AfkCog(commands.Cog):
     @discord.app_commands.command(name="setup_afk", description="Создать табло АФК")
     async def setup_afk(self, interaction: discord.Interaction):
         await self.update_afk_board(interaction.guild)
-        await interaction.response.send_message("Табло АФК инициализировано!", ephemeral=True)
+        await temp_reply(interaction, "Табло АФК инициализировано!")
 
 async def setup(bot):
     await bot.add_cog(AfkCog(bot))

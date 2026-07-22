@@ -3,6 +3,7 @@ import os
 import discord
 from discord.ext import commands
 import config
+from .utils import temp_reply, temp_edit, temp_edit_original, schedule_delete
 
 
 def has_recruiter_access(member: discord.Member) -> bool:
@@ -129,7 +130,7 @@ class RejectReasonModal(discord.ui.Modal, title="Причина отказа"):
                 await self.source_message.edit(view=None)
             except Exception:
                 pass
-        await interaction.followup.send("Отказ отправлен, кандидат уведомлён.", ephemeral=True)
+        await temp_reply(interaction, "Отказ отправлен, кандидат уведомлён.")
 
 
 class ThreadDecisionView(discord.ui.View):
@@ -195,7 +196,7 @@ class DirectionSelectView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         member = guild.get_member(self.applicant_id)
-        log_channel = guild.get_channel(config.CHANNEL_IDS.get("APP_LOG"))
+        log_channel = guild.get_channel(config.CHANNEL_IDS.get("APP_HISTORY"))
 
         thread_name = f"︱{direction}︱{self.app_data.get('static', '')}"[:100]
         thread = await log_channel.create_thread(
@@ -208,7 +209,7 @@ class DirectionSelectView(discord.ui.View):
             await thread.add_user(member)
         await thread.add_user(interaction.user)
         # Больше НЕ добавляем сюда всех рекрутов/хай-ранг автоматически.
-        # Чтобы хай-ранги видели все приватные ветки в APP_LOG без добавления в каждую,
+        # Чтобы хай-ранги видели все приватные ветки в APP_HISTORY без добавления в каждую,
         # выдай их роли право "Manage Threads" (Управление ветками) на этом канале в настройках сервера —
         # тогда они увидят ветку сами, а список участников останется только кандидат + рекрутер.
 
@@ -252,9 +253,9 @@ class DirectionSelectView(discord.ui.View):
         # Убираем кнопки выбора направления, чтобы рекрутер не мог нажать ещё раз
         self.stop()
         try:
-            await interaction.edit_original_response(content=f"Ветка {thread.mention} создана!", view=None)
+            await temp_edit_original(interaction, content=f"Ветка {thread.mention} создана!", view=None)
         except Exception:
-            await interaction.followup.send(f"Ветка {thread.mention} создана!", ephemeral=True)
+            await temp_reply(interaction, f"Ветка {thread.mention} создана!")
 
     @discord.ui.button(label="РП СТАК", style=discord.ButtonStyle.primary)
     async def rp_stack(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -364,10 +365,12 @@ class NewApplicationView(discord.ui.View):
                 sent = True
             except Exception:
                 pass
-        await interaction.response.send_message(
-            "Кандидату отправлено приглашение на обзвон!" if sent else "Не удалось отправить ЛС кандидату (закрыты сообщения).",
-            ephemeral=True
-        )
+        if sent:
+            await temp_reply(interaction, "Кандидату отправлено приглашение на обзвон!")
+        else:
+            await interaction.response.send_message(
+                "Не удалось отправить ЛС кандидату (закрыты сообщения).", ephemeral=True
+            )
         cog = interaction.client.get_cog("ApplicationsCog")
         if cog:
             await cog.log_action(
@@ -391,7 +394,7 @@ class ApplicationModal(discord.ui.Modal, title="Заявка в семью APATI
             )
 
         await interaction.response.defer(ephemeral=True)
-        log_channel = interaction.guild.get_channel(config.CHANNEL_IDS["APP_LOG"])
+        log_channel = interaction.guild.get_channel(config.CHANNEL_IDS["APP_HISTORY"])
 
         app_data = {
             "applicant_id": interaction.user.id,
@@ -419,7 +422,7 @@ class ApplicationModal(discord.ui.Modal, title="Заявка в семью APATI
             view = NewApplicationView(interaction.user.id, app_data)
             await log_channel.send(content=f"🔔 {tag} Поступила новая заявка!", embed=embed, view=view)
 
-        await interaction.followup.send("Ваша заявка отправлена рекрутерам! Ожидайте ответа в ЛС.", ephemeral=True)
+        await temp_reply(interaction, "Ваша заявка отправлена рекрутерам! Ожидайте ответа в ЛС.")
 
 
 class ApplicationPanelView(discord.ui.View):
@@ -452,7 +455,7 @@ class ApplicationsCog(commands.Cog):
     async def setup_apps(self, interaction: discord.Interaction):
         embed, files = build_panel_embed_files()
         await interaction.channel.send(embed=embed, files=files, view=ApplicationPanelView())
-        await interaction.response.send_message("Панель заявок создана!", ephemeral=True)
+        await temp_reply(interaction, "Панель заявок создана!")
 
 
 async def setup(bot):

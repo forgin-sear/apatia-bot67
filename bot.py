@@ -4,6 +4,7 @@ import os
 import asyncio
 from flask import Flask
 from threading import Thread
+import config
 
 # --- МИНИ ВЕБ-СЕРВЕР ДЛЯ RENDER ---
 app = Flask('')
@@ -39,6 +40,22 @@ INITIAL_EXTENSIONS = [
 # Если задать GUILD_ID в Environment Variables на Render — слэш-команды
 # появятся почти мгновенно (гильд-синк). Без него — до часа (глобальный синк).
 GUILD_ID = os.getenv("GUILD_ID")
+
+
+@bot.event
+async def on_guild_join(guild: discord.Guild):
+    """
+    Страховка от 'угона' бота: если его всё-таки добавили не туда,
+    куда нужно (список ALLOWED_GUILD_IDS в config.py) — бот сам
+    покидает такой сервер, не дожидаясь ручного вмешательства.
+    """
+    allowed = getattr(config, "ALLOWED_GUILD_IDS", [])
+    if allowed and guild.id not in allowed:
+        print(f"⚠️ Бота добавили на посторонний сервер '{guild.name}' (ID: {guild.id}) — выхожу.")
+        try:
+            await guild.leave()
+        except Exception as e:
+            print(f"❌ Не удалось покинуть сервер {guild.id}: {e}")
 
 
 @bot.event
