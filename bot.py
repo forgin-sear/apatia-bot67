@@ -48,6 +48,7 @@ async def on_ready():
     try:
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
+            bot.tree.copy_global_to(guild=guild)  # <-- копируем глобальные команды в гильдию
             synced = await bot.tree.sync(guild=guild)
             print(f'⚡ Синхронизировано {len(synced)} слэш-команд для гильдии {GUILD_ID}')
         else:
