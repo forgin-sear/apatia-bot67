@@ -62,14 +62,14 @@ async def resolve_application(interaction: discord.Interaction, applicant_id: in
                 await member.send(f"❌ Ваша заявка в семью **APATIA** отклонена.\n**Причина:** {reason}")
             except Exception:
                 pass
-        history_text = f"❌ Рекрутер {recruiter.mention} отказал кандидату <@{applicant_id}>\n**Причина:** {reason}"
-        log_text = f"❌ **Отказано** — кандидат: <@{applicant_id}> | Рекрутер: {recruiter.mention} | Причина: {reason}"
+        direction_part = f" (направление: **{direction}**)" if direction else ""
+        history_text = f"❌ Рекрутер {recruiter.mention} отказал кандидату <@{applicant_id}>{direction_part}\n**Причина:** {reason}"
+        log_text = f"❌ **Отказано** — кандидат: <@{applicant_id}> | Рекрутер: {recruiter.mention}{direction_part} | Причина: {reason}"
         color = discord.Color.red()
 
     cog = interaction.client.get_cog("ApplicationsCog")
     if cog:
         await cog.post_history(guild, history_text, color)
-        await cog.log_action(guild, log_text, color)
         cog.applications.pop(applicant_id, None)
 
     if original_message:
@@ -84,11 +84,22 @@ async def resolve_application(interaction: discord.Interaction, applicant_id: in
             pass
 
     if thread:
+        # Для веток (РП СТАК / КРАЙМ): кидаем подробный итог в LOGS
+        # и полностью удаляем ветку, вместо архивации.
+        if cog:
+            thread_log_text = f"{log_text} | Ветка «{thread.name}» удалена"
+            await cog.log_action(guild, thread_log_text, color)
         try:
             await thread.send(embed=discord.Embed(description=history_text, color=color))
-            await thread.edit(archived=True, locked=True)
         except Exception:
             pass
+        try:
+            await thread.delete()
+        except Exception:
+            pass
+    else:
+        if cog:
+            await cog.log_action(guild, log_text, color)
 
 
 class RejectReasonModal(discord.ui.Modal, title="Причина отказа"):
