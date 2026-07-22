@@ -45,10 +45,10 @@ class AfkControlView(discord.ui.View):
     async def back_afk(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id in afk_database:
             del afk_database[interaction.user.id]
+            await interaction.response.send_message("Вы успешно убраны из списка АФК!", ephemeral=True)
             cog = interaction.client.get_cog("AfkCog")
             if cog:
                 await cog.update_afk_board(interaction.guild)
-            await interaction.response.send_message("Вы успешно убраны из списка АФК!", ephemeral=True)
         else:
             await interaction.response.send_message("Вас нет в списке АФК!", ephemeral=True)
 
@@ -119,3 +119,4 @@ class AfkCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(AfkCog(bot))
+    bot.add_view(AfkControlView())  # чтобы кнопки жили и после перезапуска бота
