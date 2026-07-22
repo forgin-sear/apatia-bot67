@@ -74,12 +74,7 @@ async def resolve_application(interaction: discord.Interaction, applicant_id: in
 
     if original_message:
         try:
-            result_embed = discord.Embed(
-                title="✅ Заявка ПРИНЯТА" if decision == "accepted" else "❌ Заявка ОТКЛОНЕНА",
-                description=history_text,
-                color=color
-            )
-            await original_message.edit(content=None, embed=result_embed, view=None)
+            await original_message.delete()
         except Exception:
             pass
 
