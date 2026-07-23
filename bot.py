@@ -35,6 +35,7 @@ INITIAL_EXTENSIONS = [
     "cogs.applications",
     "cogs.private_voice",
     "cogs.welcome",
+    "cogs.mp_signup",
 ]
 
 # Если задать GUILD_ID в Environment Variables на Render — слэш-команды
