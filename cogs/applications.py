@@ -210,16 +210,31 @@ class DirectionSelectView(discord.ui.View):
 
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
-        member = guild.get_member(self.applicant_id)
-        log_channel = guild.get_channel(config.CHANNEL_IDS.get("APP_HISTORY"))
 
-        if not log_channel:
+        # Кандидата берём НЕ через get_member (это только кэш и может тихо
+        # вернуть None, даже если человек реально на сервере), а через
+        # fetch_member — это прямой запрос к Discord API, надёжнее.
+        member = guild.get_member(self.applicant_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(self.applicant_id)
+            except discord.NotFound:
+                member = None
+            except Exception as e:
+                print(f"⚠️ Не удалось получить участника {self.applicant_id} через fetch_member: {e}")
+                member = None
+
+        # Ветка-направление теперь создаётся в APP_LOG, а не в APP_HISTORY
+        # (APP_HISTORY остаётся только для итоговых сообщений о принятии/отказе).
+        thread_parent = guild.get_channel(config.CHANNEL_IDS.get("APP_LOG"))
+
+        if not thread_parent:
             self.resolved = False
-            return await temp_reply(interaction, "❌ Канал APP_HISTORY не найден — проверь ID в config.py!")
+            return await temp_reply(interaction, "❌ Канал APP_LOG не найден — проверь ID в config.py!")
 
         thread_name = f"︱{direction}︱{self.app_data.get('static', '')}"[:100]
         try:
-            thread = await log_channel.create_thread(
+            thread = await thread_parent.create_thread(
                 name=thread_name,
                 type=discord.ChannelType.private_thread,
                 invitable=False
@@ -233,15 +248,30 @@ class DirectionSelectView(discord.ui.View):
         # Каждую попытку оборачиваем ОТДЕЛЬНО — если добавление одного из них упадёт
         # (например, из-за прав бота), это больше не должно мешать отправке
         # сообщения с инструкциями и кнопками ниже.
+        candidate_added = False
         if member:
             try:
                 await thread.add_user(member)
+                candidate_added = True
             except Exception as e:
                 print(f"⚠️ Не удалось добавить кандидата в ветку {thread.id}: {e}")
         try:
             await thread.add_user(interaction.user)
         except Exception as e:
             print(f"⚠️ Не удалось добавить рекрутера в ветку {thread.id}: {e}")
+
+        if not candidate_added:
+            # Пишем прямо в саму ветку, чтобы это не потерялось в консоли сервера —
+            # рекрутер сразу увидит, что кандидата надо добавить руками
+            # (правой кнопкой по ветке → Люди → Добавить людей).
+            try:
+                await thread.send(
+                    "⚠️ Не удалось автоматически добавить кандидата в эту ветку "
+                    "(бот не смог его найти/добавить). Добавь вручную: "
+                    "правой кнопкой по ветке → **Люди** → **Добавить людей**."
+                )
+            except Exception:
+                pass
         # Больше НЕ добавляем сюда всех рекрутов/хай-ранг автоматически.
         # Чтобы хай-ранги видели все приватные ветки в APP_HISTORY без добавления в каждую,
         # выдай их роли право "Manage Threads" (Управление ветками) на этом канале в настройках сервера —
