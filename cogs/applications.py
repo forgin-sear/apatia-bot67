@@ -48,9 +48,24 @@ async def resolve_application(interaction: discord.Interaction, applicant_id: in
                 await member.remove_roles(new_role)
             except Exception:
                 pass
-        if member:
+
+        awaiting_role = guild.get_role(config.ROLE_IDS.get("AWAITING_RULES"))
+        if member and awaiting_role:
             try:
-                await member.send("🎉 **Поздравляем!** Ваша заявка в семью **APATIA** одобрена. Добро пожаловать!")
+                await member.add_roles(awaiting_role)
+            except Exception:
+                pass
+        if member:
+            rules_id = config.CHANNEL_IDS.get("RULES")
+            rules_ref = f"<#{rules_id}>" if rules_id else "канал с правилами"
+            try:
+                await member.send(
+                    "🎉 **Поздравляем!** Ваша заявка в семью **APATIA** одобрена. Добро пожаловать!\n\n"
+                    f"Дальше нужно:\n"
+                    f"1️⃣ Ознакомиться с правилами — {rules_ref}, и нажать там кнопку "
+                    f"«✅ Я ознакомился с правилами» (после этого получишь роль).\n"
+                    f"2️⃣ Сменить ник на формат `Имя Фамилия | Статик`."
+                )
             except Exception:
                 pass
         direction_part = f" (направление: **{direction}**)" if direction else ""
