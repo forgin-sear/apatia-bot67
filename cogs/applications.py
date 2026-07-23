@@ -198,16 +198,35 @@ class DirectionSelectView(discord.ui.View):
         member = guild.get_member(self.applicant_id)
         log_channel = guild.get_channel(config.CHANNEL_IDS.get("APP_HISTORY"))
 
-        thread_name = f"︱{direction}︱{self.app_data.get('static', '')}"[:100]
-        thread = await log_channel.create_thread(
-            name=thread_name,
-            type=discord.ChannelType.private_thread,
-            invitable=False
-        )
+        if not log_channel:
+            self.resolved = False
+            return await temp_reply(interaction, "❌ Канал APP_HISTORY не найден — проверь ID в config.py!")
 
+        thread_name = f"︱{direction}︱{self.app_data.get('static', '')}"[:100]
+        try:
+            thread = await log_channel.create_thread(
+                name=thread_name,
+                type=discord.ChannelType.private_thread,
+                invitable=False
+            )
+        except Exception as e:
+            self.resolved = False
+            print(f"❌ Не удалось создать ветку направления {direction}: {e}")
+            return await temp_reply(interaction, f"❌ Не удалось создать ветку: {e}")
+
+        # Добавляем кандидата и рекрутера в ветку.
+        # Каждую попытку оборачиваем ОТДЕЛЬНО — если добавление одного из них упадёт
+        # (например, из-за прав бота), это больше не должно мешать отправке
+        # сообщения с инструкциями и кнопками ниже.
         if member:
-            await thread.add_user(member)
-        await thread.add_user(interaction.user)
+            try:
+                await thread.add_user(member)
+            except Exception as e:
+                print(f"⚠️ Не удалось добавить кандидата в ветку {thread.id}: {e}")
+        try:
+            await thread.add_user(interaction.user)
+        except Exception as e:
+            print(f"⚠️ Не удалось добавить рекрутера в ветку {thread.id}: {e}")
         # Больше НЕ добавляем сюда всех рекрутов/хай-ранг автоматически.
         # Чтобы хай-ранги видели все приватные ветки в APP_HISTORY без добавления в каждую,
         # выдай их роли право "Manage Threads" (Управление ветками) на этом канале в настройках сервера —
@@ -226,10 +245,13 @@ class DirectionSelectView(discord.ui.View):
             color=discord.Color.gold()
         )
         view = ThreadDecisionView(self.applicant_id, direction, self.original_message)
-        await thread.send(
-            content=f"{member.mention if member else ''} | {interaction.user.mention}",
-            embed=embed, view=view
-        )
+        try:
+            await thread.send(
+                content=f"{member.mention if member else ''} | {interaction.user.mention}",
+                embed=embed, view=view
+            )
+        except Exception as e:
+            print(f"❌ Не удалось отправить сообщение с инструкциями в ветку {thread.id}: {e}")
 
         try:
             info_embed = self.original_message.embeds[0]
