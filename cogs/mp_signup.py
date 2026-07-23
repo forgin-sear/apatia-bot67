@@ -178,6 +178,36 @@ class SignupControlView(discord.ui.View):
         await temp_reply(interaction, "❎ Вы отписались от записи.")
 
 
+    @discord.ui.button(label="🔒 Закрыть запись", style=discord.ButtonStyle.secondary, custom_id="mp_close")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not has_high_rank_access(interaction.user):
+            return await interaction.response.send_message(
+                "Закрывать запись могут только хай-ранги!", ephemeral=True
+            )
+
+        cog = interaction.client.get_cog("MPSignupCog")
+        if not cog or interaction.message.id not in cog.signups:
+            return await interaction.response.send_message("Эта запись уже закрыта.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+        data = cog.signups.pop(interaction.message.id)
+
+        log_channel = interaction.guild.get_channel(config.CHANNEL_IDS.get("LOGS"))
+        if log_channel:
+            embed = build_signup_embed(data)
+            embed.title = f"📁 Запись закрыта: {data['title']}"
+            embed.color = discord.Color.dark_grey()
+            embed.set_footer(text=f"Закрыл: {interaction.user.display_name}")
+            await log_channel.send(embed=embed)
+
+        try:
+            await interaction.message.delete()
+        except Exception:
+            pass
+
+        await temp_reply(interaction, "🔒 Запись закрыта, итог сохранён в логах.")
+
+
 class MPPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
