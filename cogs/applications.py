@@ -149,19 +149,27 @@ class RejectReasonModal(discord.ui.Modal, title="Причина отказа"):
 
 
 class ThreadDecisionView(discord.ui.View):
-    def __init__(self, applicant_id: int, direction: str, original_message: discord.Message):
+    def __init__(self, applicant_id: int, direction: str, original_message: discord.Message, responsible_id: int):
         super().__init__(timeout=None)
         self.applicant_id = applicant_id
         self.direction = direction
         self.original_message = original_message
+        self.responsible_id = responsible_id  # только этот рекрутер может решать по заявке
         self.resolved = False
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.applicant_id:
             await interaction.response.send_message("Нельзя решать по своей же заявке!", ephemeral=True)
             return False
-        if not has_recruiter_access(interaction.user):
-            await interaction.response.send_message("Недостаточно прав для решения по заявке!", ephemeral=True)
+        # Кнопки может нажимать только тот, кто взял заявку в работу (или админ).
+        # Остальные (хай-ранги, другие рекрутеры), добавленные в ветку для наблюдения,
+        # могут писать и смотреть, но решение выносит только ответственный.
+        is_responsible = interaction.user.id == self.responsible_id
+        is_admin = interaction.user.guild_permissions.administrator
+        if not (is_responsible or is_admin):
+            await interaction.response.send_message(
+                "Решение по этой заявке может вынести только ответственный рекрутер!", ephemeral=True
+            )
             return False
         if self.resolved:
             await interaction.response.send_message("Решение по этой заявке уже вынесено.", ephemeral=True)
@@ -272,10 +280,24 @@ class DirectionSelectView(discord.ui.View):
                 )
             except Exception:
                 pass
-        # Больше НЕ добавляем сюда всех рекрутов/хай-ранг автоматически.
-        # Чтобы хай-ранги видели все приватные ветки в APP_HISTORY без добавления в каждую,
-        # выдай их роли право "Manage Threads" (Управление ветками) на этом канале в настройках сервера —
-        # тогда они увидят ветку сами, а список участников останется только кандидат + рекрутер.
+        # Добавляем наблюдателей: всех рекрутов + хай-ранги (HIGH, DEP_OWN, OWNER, LEADER).
+        # Они видят ветку и могут писать в ней, НО кнопки принять/отклонить
+        # (см. ThreadDecisionView._guard) может нажать только ответственный рекрутер.
+        observer_role_keys = ("RECRUITER", "HIGH", "DEP_OWN", "OWNER", "LEADER")
+        added_ids = {member.id if member else None, interaction.user.id}
+        for role_key in observer_role_keys:
+            role_id = config.ROLE_IDS.get(role_key)
+            role = guild.get_role(role_id) if role_id else None
+            if not role:
+                continue
+            for observer in role.members:
+                if observer.bot or observer.id in added_ids:
+                    continue
+                added_ids.add(observer.id)
+                try:
+                    await thread.add_user(observer)
+                except Exception as e:
+                    print(f"⚠️ Не удалось добавить наблюдателя {observer.id} в ветку {thread.id}: {e}")
 
         self.app_data["claimed_by"] = interaction.user.id
         self.app_data["direction"] = direction
@@ -289,7 +311,7 @@ class DirectionSelectView(discord.ui.View):
             ),
             color=discord.Color.gold()
         )
-        view = ThreadDecisionView(self.applicant_id, direction, self.original_message)
+        view = ThreadDecisionView(self.applicant_id, direction, self.original_message, responsible_id=interaction.user.id)
         try:
             await thread.send(
                 content=f"{member.mention if member else ''} | {interaction.user.mention}",
