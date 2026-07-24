@@ -38,6 +38,7 @@ INITIAL_EXTENSIONS = [
     "cogs.mp_signup",
     "cogs.vacation",
     "cogs.rules",
+    "cogs.roster",
 ]
 
 # Если задать GUILD_ID в Environment Variables на Render — слэш-команды
