@@ -91,7 +91,23 @@ def build_new_members_embed(guild: discord.Guild) -> discord.Embed:
         embed.description = "⚠️ Роль NEW не найдена, проверь config.py."
         return embed
 
-    members = [m for m in role.members if not m.bot]
+    # Роли, наличие любой из которых означает "у человека УЖЕ есть нормальная роль" —
+    # даже если New почему-то не сняли (например, роль выдали вручную в обход бота).
+    # Таких в список новичков включать не нужно.
+    real_role_keys = ("AWAITING_RULES", "APATIA", "MAIN", "MAIN_PLUS", "HIGH", "DEP_OWN", "OWNER", "LEADER", "RECRUITER")
+    real_role_ids = {config.ROLE_IDS.get(k) for k in real_role_keys}
+
+    stale_examples = []  # те, у кого New + другая роль одновременно — покажем отдельно как "надо снять New"
+    members = []
+    for m in role.members:
+        if m.bot:
+            continue
+        member_role_ids = {r.id for r in m.roles}
+        if member_role_ids & real_role_ids:
+            stale_examples.append(m)
+            continue
+        members.append(m)
+
     # Сортируем по дате входа на сервер — кто дольше всех без движения, тот наверху
     members.sort(key=lambda m: m.joined_at or discord.utils.utcnow())
 
@@ -113,6 +129,15 @@ def build_new_members_embed(guild: discord.Guild) -> discord.Embed:
             value = value[:1000] + "\n… (список обрезан, слишком много участников)"
         embed.add_field(name=f"Список ({len(members)})", value=value, inline=False)
 
+    if stale_examples:
+        stale_value = "\n".join(f"• {m.mention}" for m in stale_examples[:15])
+        if len(stale_examples) > 15:
+            stale_value += f"\n… и ещё {len(stale_examples) - 15}"
+        embed.add_field(
+            name=f"⚠️ У них есть New + другая роль ({len(stale_examples)}) — просто забыли снять New",
+            value=stale_value, inline=False
+        )
+
     embed.set_footer(text="Обновляется автоматически при входе/выходе и изменении ролей")
     embed.timestamp = discord.utils.utcnow()
     return embed
@@ -124,13 +149,15 @@ class RosterCog(commands.Cog):
         self.message_id = None      # id сообщения-таблицы состава (сбрасывается при рестарте)
         self.new_board_message_id = None  # id сообщения-доски новичков (сбрасывается при рестарте)
 
-    async def refresh_roster(self, guild: discord.Guild):
+    async def refresh_roster(self, guild: discord.Guild) -> bool:
         channel_id = config.CHANNEL_IDS.get("ROSTER")
         if not channel_id:
-            return
+            print("⚠️ CHANNEL_IDS['ROSTER'] не настроен (0) в config.py")
+            return False
         channel = guild.get_channel(channel_id)
         if not channel:
-            return
+            print(f"⚠️ Канал ROSTER с ID {channel_id} не найден на сервере (бот не видит канал или ID неверный)")
+            return False
 
         embed = build_roster_embed(guild)
 
@@ -138,20 +165,27 @@ class RosterCog(commands.Cog):
             try:
                 msg = await channel.fetch_message(self.message_id)
                 await msg.edit(embed=embed)
-                return
+                return True
             except Exception:
                 pass  # сообщение удалили/не нашли — создадим новое ниже
 
-        msg = await channel.send(embed=embed)
-        self.message_id = msg.id
+        try:
+            msg = await channel.send(embed=embed)
+            self.message_id = msg.id
+            return True
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить таблицу состава в канал ROSTER: {e}")
+            return False
 
-    async def refresh_new_board(self, guild: discord.Guild):
+    async def refresh_new_board(self, guild: discord.Guild) -> bool:
         channel_id = config.CHANNEL_IDS.get("NEW_BOARD")
         if not channel_id:
-            return
+            print("⚠️ CHANNEL_IDS['NEW_BOARD'] не настроен (0) в config.py")
+            return False
         channel = guild.get_channel(channel_id)
         if not channel:
-            return
+            print(f"⚠️ Канал NEW_BOARD с ID {channel_id} не найден на сервере (бот не видит канал или ID неверный)")
+            return False
 
         embed = build_new_members_embed(guild)
 
@@ -159,12 +193,17 @@ class RosterCog(commands.Cog):
             try:
                 msg = await channel.fetch_message(self.new_board_message_id)
                 await msg.edit(embed=embed)
-                return
+                return True
             except Exception:
                 pass
 
-        msg = await channel.send(embed=embed)
-        self.new_board_message_id = msg.id
+        try:
+            msg = await channel.send(embed=embed)
+            self.new_board_message_id = msg.id
+            return True
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить доску новичков в канал NEW_BOARD: {e}")
+            return False
 
     @discord.app_commands.command(
         name="setup_new_board",
@@ -172,8 +211,15 @@ class RosterCog(commands.Cog):
     )
     async def setup_new_board(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        await self.refresh_new_board(interaction.guild)
-        await temp_reply(interaction, "✅ Доска новичков создана/обновлена!")
+        ok = await self.refresh_new_board(interaction.guild)
+        if ok:
+            await temp_reply(interaction, "✅ Доска новичков создана/обновлена!")
+        else:
+            await temp_reply(
+                interaction,
+                "❌ Не получилось — проверь, что CHANNEL_IDS['NEW_BOARD'] в config.py указывает "
+                "на реальный ID канала (не 0), и что бот видит этот канал."
+            )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -188,8 +234,15 @@ class RosterCog(commands.Cog):
     )
     async def setup_roster(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        await self.refresh_roster(interaction.guild)
-        await temp_reply(interaction, "✅ Таблица состава создана/обновлена!")
+        ok = await self.refresh_roster(interaction.guild)
+        if ok:
+            await temp_reply(interaction, "✅ Таблица состава создана/обновлена!")
+        else:
+            await temp_reply(
+                interaction,
+                "❌ Не получилось — проверь, что CHANNEL_IDS['ROSTER'] в config.py указывает "
+                "на реальный ID канала (не 0), и что бот видит этот канал."
+            )
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
