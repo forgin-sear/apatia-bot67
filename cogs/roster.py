@@ -149,6 +149,21 @@ class RosterCog(commands.Cog):
         self.message_id = None      # id сообщения-таблицы состава (сбрасывается при рестарте)
         self.new_board_message_id = None  # id сообщения-доски новичков (сбрасывается при рестарте)
 
+    async def _find_own_message(self, channel: discord.TextChannel, title: str):
+        """
+        Ищет в последних сообщениях канала уже существующее сообщение БОТА
+        с embed'ом, у которого совпадает заголовок. Нужно, чтобы после
+        рестарта бота (Render засыпает/перезапускается) он не плодил новые
+        сообщения, а нашёл и стал редактировать старое.
+        """
+        try:
+            async for msg in channel.history(limit=50):
+                if msg.author.id == self.bot.user.id and msg.embeds and msg.embeds[0].title == title:
+                    return msg
+        except Exception as e:
+            print(f"⚠️ Не удалось прочитать историю канала {channel.id} для поиска старого сообщения: {e}")
+        return None
+
     async def refresh_roster(self, guild: discord.Guild) -> bool:
         channel_id = config.CHANNEL_IDS.get("ROSTER")
         if not channel_id:
@@ -167,7 +182,16 @@ class RosterCog(commands.Cog):
                 await msg.edit(embed=embed)
                 return True
             except Exception:
-                pass  # сообщение удалили/не нашли — создадим новое ниже
+                self.message_id = None  # сообщение удалили/не нашли — поищем/создадим ниже
+
+        existing = await self._find_own_message(channel, embed.title)
+        if existing:
+            try:
+                await existing.edit(embed=embed)
+                self.message_id = existing.id
+                return True
+            except Exception as e:
+                print(f"⚠️ Нашёл старое сообщение таблицы, но не смог отредактировать: {e}")
 
         try:
             msg = await channel.send(embed=embed)
@@ -195,7 +219,16 @@ class RosterCog(commands.Cog):
                 await msg.edit(embed=embed)
                 return True
             except Exception:
-                pass
+                self.new_board_message_id = None
+
+        existing = await self._find_own_message(channel, embed.title)
+        if existing:
+            try:
+                await existing.edit(embed=embed)
+                self.new_board_message_id = existing.id
+                return True
+            except Exception as e:
+                print(f"⚠️ Нашёл старое сообщение доски новичков, но не смог отредактировать: {e}")
 
         try:
             msg = await channel.send(embed=embed)
